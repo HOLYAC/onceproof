@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+*.sqlite3*
+*.credentials.json
+*.rotation.json
+*.secret.json
+*.pending.json
+keyring.json
+build
+dist

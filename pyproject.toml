@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "onceproof"
+version = "0.1.0a1"
+description = "A self-hosted issuer and one-time verifier for opaque application proofs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [
+  { name = "HOLYAC" },
+]
+keywords = ["one-time-token", "proof", "issuer", "verification", "replay-protection"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Security",
+  "Typing :: Typed",
+]
+dependencies = [
+  "uvicorn>=0.51,<0.52",
+]
+
+[project.optional-dependencies]
+test = [
+  "build>=1.2",
+  "coverage[toml]>=7.6",
+  "jsonschema>=4.23",
+  "ruff>=0.15,<1",
+  "twine>=6.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/HOLYAC/onceproof"
+Repository = "https://github.com/HOLYAC/onceproof"
+Issues = "https://github.com/HOLYAC/onceproof/issues"
+
+[project.scripts]
+onceproof = "onceproof.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/onceproof"]
+
+[tool.coverage.run]
+branch = true
+source = ["onceproof"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]

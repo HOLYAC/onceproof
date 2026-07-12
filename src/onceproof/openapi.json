@@ -1,0 +1,701 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Onceproof API",
+    "version": "0.1.0a1",
+    "description": "Issue opaque application proofs under an issuer credential and atomically consume them under a separate verifier credential. Issuance is not verifier acceptance."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8787",
+      "description": "Default loopback-only instance"
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "health",
+        "summary": "Report process liveness",
+        "responses": {
+          "200": {
+            "description": "The HTTP process is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readiness",
+        "summary": "Report database and keyring readiness",
+        "responses": {
+          "200": {
+            "description": "The instance can serve requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The instance cannot safely serve requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnavailableResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/v1/proofs": {
+      "post": {
+        "operationId": "issueProof",
+        "summary": "Issue one opaque proof",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The proof was issued but has not been verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeout"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/v1/verifications": {
+      "post": {
+        "operationId": "verifyProof",
+        "summary": "Verify and atomically consume one proof",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+            },
+            "description": "Scopes a retry of the same canonical verification input to the authenticated client. The original decision is retained for at least 24 hours."
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A verifier-authenticated decision; only verified=true crossed the boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeout"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Use an opi1 issuer secret only on /v1/proofs and an opv1 verifier secret only on /v1/verifications."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request is malformed or violates the strict contract",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "The role-specific bearer credential was rejected",
+        "headers": {
+          "WWW-Authenticate": {
+            "schema": {
+              "type": "string",
+              "const": "Bearer realm=\"onceproof\""
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The authenticated issuer is not allowed to issue this audience",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "An idempotency key was reused for different canonical verification input",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "TooLarge": {
+        "description": "The request exceeds max_request_bytes",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RequestTimeout": {
+        "description": "The complete request body did not arrive within the fixed deadline",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "The body is not application/json",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "The authenticated role exhausted its durable per-minute quota",
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RateLimitResponse"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "The service is overloaded or durable verification state is unavailable, so the boundary fails closed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "An unexpected internal failure was contained without crossing the verifier boundary",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        }
+      },
+      "ReadyResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "const": "ready"
+          }
+        }
+      },
+      "UnavailableResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "const": "unavailable"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      },
+      "RateLimitResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error", "retry_after_seconds"],
+        "properties": {
+          "error": {
+            "const": "rate_limited"
+          },
+          "retry_after_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+          }
+        }
+      },
+      "Subject": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^[^\\u0000-\\u001f]+(?![\\s\\S])"
+      },
+      "Purpose": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}(?![\\s\\S])"
+      },
+      "Audience": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512,
+        "oneOf": [
+          {
+            "pattern": "^https://[^/?#\\s\\u0000-\\u001f]+(?:[/?#][^\\s\\u0000-\\u001f]*)?(?![\\s\\S])"
+          },
+          {
+            "pattern": "^urn:[^\\s\\u0000-\\u001f]+(?![\\s\\S])"
+          }
+        ]
+      },
+      "IssueRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject", "purpose", "audience"],
+        "properties": {
+          "subject": {
+            "$ref": "#/components/schemas/Subject"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/Purpose"
+          },
+          "audience": {
+            "$ref": "#/components/schemas/Audience"
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600,
+            "description": "Optional protocol TTL; the authenticated client's configured maximum can be lower."
+          }
+        }
+      },
+      "ProofReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "proof_tag",
+          "client_id",
+          "subject",
+          "purpose",
+          "audience",
+          "issued_at",
+          "expires_at"
+        ],
+        "properties": {
+          "state": {
+            "const": "issued"
+          },
+          "proof_tag": {
+            "type": "string",
+            "pattern": "^pf_[0-9a-f]{24}$"
+          },
+          "client_id": {
+            "type": "string",
+            "pattern": "^opc_[0-9a-f]{24}$"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/Subject"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/Purpose"
+          },
+          "audience": {
+            "$ref": "#/components/schemas/Audience"
+          },
+          "issued_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "IssueResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["proof", "receipt"],
+        "properties": {
+          "proof": {
+            "type": "string",
+            "pattern": "^op1\\.hk_[0-9a-f]{16}\\.[A-Za-z0-9_-]{43}$"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ProofReceipt"
+          }
+        }
+      },
+      "VerificationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["proof", "subject", "purpose", "audience"],
+        "properties": {
+          "proof": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "subject": {
+            "$ref": "#/components/schemas/Subject"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/Purpose"
+          },
+          "audience": {
+            "$ref": "#/components/schemas/Audience"
+          }
+        }
+      },
+      "ProofClaims": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_id", "subject", "purpose", "audience", "issued_at", "expires_at"],
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "pattern": "^opc_[0-9a-f]{24}$"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/Subject"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/Purpose"
+          },
+          "audience": {
+            "$ref": "#/components/schemas/Audience"
+          },
+          "issued_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "AcceptedWitness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "verification_id", "proof_tag", "client_id", "decided_at", "reason"],
+        "properties": {
+          "state": {
+            "const": "verified_once"
+          },
+          "verification_id": {
+            "type": "string",
+            "pattern": "^vr_[0-9a-f]{32}$"
+          },
+          "proof_tag": {
+            "type": "string",
+            "pattern": "^pf_[0-9a-f]{24}$"
+          },
+          "client_id": {
+            "type": "string",
+            "pattern": "^opc_[0-9a-f]{24}$"
+          },
+          "decided_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "null"
+          }
+        }
+      },
+      "RejectedWitness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "verification_id", "proof_tag", "client_id", "decided_at", "reason"],
+        "properties": {
+          "state": {
+            "const": "rejected"
+          },
+          "verification_id": {
+            "type": "string",
+            "pattern": "^vr_[0-9a-f]{32}$"
+          },
+          "proof_tag": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^pf_[0-9a-f]{24}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "client_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^opc_[0-9a-f]{24}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decided_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "enum": ["invalid", "expired", "binding_mismatch"]
+          }
+        }
+      },
+      "ReplayWitness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "verification_id", "proof_tag", "client_id", "decided_at", "reason"],
+        "properties": {
+          "state": {
+            "const": "replay_rejected"
+          },
+          "verification_id": {
+            "type": "string",
+            "pattern": "^vr_[0-9a-f]{32}$"
+          },
+          "proof_tag": {
+            "type": "string",
+            "pattern": "^pf_[0-9a-f]{24}$"
+          },
+          "client_id": {
+            "type": "string",
+            "pattern": "^opc_[0-9a-f]{24}$"
+          },
+          "decided_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "const": "already_consumed"
+          }
+        }
+      },
+      "VerificationResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["verified", "reason", "witness", "claims"],
+            "properties": {
+              "verified": {
+                "const": true
+              },
+              "reason": {
+                "type": "null"
+              },
+              "witness": {
+                "$ref": "#/components/schemas/AcceptedWitness"
+              },
+              "claims": {
+                "$ref": "#/components/schemas/ProofClaims"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["verified", "reason", "witness", "claims"],
+            "properties": {
+              "verified": {
+                "const": false
+              },
+              "reason": {
+                "enum": ["invalid", "expired", "binding_mismatch"]
+              },
+              "witness": {
+                "$ref": "#/components/schemas/RejectedWitness"
+              },
+              "claims": {
+                "type": "null"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["verified", "reason", "witness", "claims"],
+            "properties": {
+              "verified": {
+                "const": false
+              },
+              "reason": {
+                "const": "already_consumed"
+              },
+              "witness": {
+                "$ref": "#/components/schemas/ReplayWitness"
+              },
+              "claims": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
