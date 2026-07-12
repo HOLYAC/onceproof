@@ -1,0 +1,33 @@
+name: external-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: HTTPS base URL of an ephemeral Onceproof deployment
+        required: true
+        type: string
+      audience:
+        description: Audience assigned to the temporary probe client
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Probe external deployment
+        env:
+          ONCEPROOF_EXTERNAL_URL: ${{ inputs.base_url }}
+          ONCEPROOF_EXTERNAL_AUDIENCE: ${{ inputs.audience }}
+          ONCEPROOF_EXTERNAL_ISSUANCE_SECRET: ${{ secrets.ONCEPROOF_EXTERNAL_ISSUANCE_SECRET }}
+          ONCEPROOF_EXTERNAL_VERIFICATION_SECRET: ${{ secrets.ONCEPROOF_EXTERNAL_VERIFICATION_SECRET }}
+        run: python scripts/external_smoke.py
