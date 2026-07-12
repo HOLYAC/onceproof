@@ -8,8 +8,8 @@ RUN python -m pip install --no-cache-dir build && python -m build --wheel
 FROM python:3.13-slim
 
 RUN useradd --create-home --uid 10001 onceproof
-COPY --from=build /build/dist/*.whl /tmp/onceproof.whl
-RUN python -m pip install --no-cache-dir /tmp/onceproof.whl && rm /tmp/onceproof.whl
+COPY --from=build /build/dist/*.whl /tmp/
+RUN python -m pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
 COPY scripts/container-entrypoint.sh /usr/local/bin/onceproof-container
 RUN chmod 0555 /usr/local/bin/onceproof-container
 RUN mkdir -p /var/lib/onceproof && chown onceproof:onceproof /var/lib/onceproof
