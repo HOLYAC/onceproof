@@ -71,7 +71,7 @@ jobs:
           docker run --detach \
             --name "$tunnel_name" \
             --network host \
-            cloudflare/cloudflared:2026.5.2 \
+            cloudflare/cloudflared:2026.5.2@sha256:12ff5c6992a9863db4da270746af7c244bcaee49353039af8104268a18d6c4f0 \
             tunnel --no-autoupdate --url http://127.0.0.1:38787 \
             >/dev/null
 

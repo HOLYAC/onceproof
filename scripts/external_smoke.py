@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -79,6 +80,20 @@ def _require(condition: bool, failure: str) -> None:
         raise RuntimeError(failure)
 
 
+def _wait_ready(base_url: str) -> None:
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        try:
+            status, body, _ = _request(f"{base_url}/readyz")
+        except (OSError, urllib.error.URLError):
+            time.sleep(1)
+            continue
+        if status == 200 and body == {"status": "ready"}:
+            return
+        time.sleep(1)
+    raise RuntimeError("external_not_ready")
+
+
 def main() -> int:
     base_url = _base_url()
     issuance_secret = _required_environment("ONCEPROOF_EXTERNAL_ISSUANCE_SECRET")
@@ -91,8 +106,7 @@ def main() -> int:
         "audience": audience,
     }
 
-    ready_status, ready, _ = _request(f"{base_url}/readyz")
-    _require(ready_status == 200 and ready == {"status": "ready"}, "external_not_ready")
+    _wait_ready(base_url)
 
     rejected_status, rejected, _ = _request(f"{base_url}/v1/proofs", body=binding)
     _require(
