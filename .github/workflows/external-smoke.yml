@@ -2,15 +2,6 @@ name: external-smoke
 
 on:
   workflow_dispatch:
-    inputs:
-      base_url:
-        description: HTTPS base URL of an ephemeral Onceproof deployment
-        required: true
-        type: string
-      audience:
-        description: Audience assigned to the temporary probe client
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -18,16 +9,102 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - name: Probe external deployment
-        env:
-          ONCEPROOF_EXTERNAL_URL: ${{ inputs.base_url }}
-          ONCEPROOF_EXTERNAL_AUDIENCE: ${{ inputs.audience }}
-          ONCEPROOF_EXTERNAL_ISSUANCE_SECRET: ${{ secrets.ONCEPROOF_EXTERNAL_ISSUANCE_SECRET }}
-          ONCEPROOF_EXTERNAL_VERIFICATION_SECRET: ${{ secrets.ONCEPROOF_EXTERNAL_VERIFICATION_SECRET }}
-        run: python scripts/external_smoke.py
+      - run: python -m pip install .
+      - name: Probe ephemeral public deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          root=$(mktemp -d)
+          instance="$root/instance"
+          credentials="$root/external.credentials.json"
+          tunnel_name="onceproof-cloudflared-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          server_pid=""
+
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if [[ $status -ne 0 ]]; then
+              docker logs "$tunnel_name" 2>&1 | tail -n 100 || true
+              tail -n 100 "$root/server.stderr.log" 2>/dev/null || true
+            fi
+            docker rm --force "$tunnel_name" >/dev/null 2>&1 || true
+            if [[ -n "$server_pid" ]]; then
+              kill "$server_pid" >/dev/null 2>&1 || true
+              wait "$server_pid" >/dev/null 2>&1 || true
+            fi
+            rm -rf "$root"
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          onceproof init "$instance" --host 127.0.0.1 --port 38787 >/dev/null
+          onceproof client create \
+            --config "$instance/onceproof.toml" \
+            --name external-smoke \
+            --audience urn:onceproof:external-smoke \
+            --credentials-out "$credentials" \
+            >/dev/null
+          onceproof serve --config "$instance/onceproof.toml" \
+            >"$root/server.stdout.log" \
+            2>"$root/server.stderr.log" &
+          server_pid=$!
+
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:38787/readyz >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "Onceproof exited before becoming ready" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:38787/readyz >/dev/null
+
+          docker run --detach \
+            --name "$tunnel_name" \
+            --network host \
+            cloudflare/cloudflared:2026.5.2 \
+            tunnel --no-autoupdate --url http://127.0.0.1:38787 \
+            >/dev/null
+
+          external_url=""
+          for _ in $(seq 1 60); do
+            external_url=$(docker logs "$tunnel_name" 2>&1 \
+              | grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' \
+              | tail -n 1 || true)
+            if [[ -n "$external_url" ]]; then
+              break
+            fi
+            if [[ $(docker inspect --format '{{.State.Running}}' "$tunnel_name") != true ]]; then
+              echo "cloudflared exited before publishing a URL" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ -z "$external_url" ]]; then
+            echo "cloudflared did not publish a URL" >&2
+            exit 1
+          fi
+
+          issuance_secret=$(python -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["issuance_secret"])' \
+            "$credentials")
+          verification_secret=$(python -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["verification_secret"])' \
+            "$credentials")
+          echo "::add-mask::$issuance_secret"
+          echo "::add-mask::$verification_secret"
+
+          ONCEPROOF_EXTERNAL_URL="$external_url" \
+          ONCEPROOF_EXTERNAL_AUDIENCE=urn:onceproof:external-smoke \
+          ONCEPROOF_EXTERNAL_ISSUANCE_SECRET="$issuance_secret" \
+          ONCEPROOF_EXTERNAL_VERIFICATION_SECRET="$verification_secret" \
+            python scripts/external_smoke.py
