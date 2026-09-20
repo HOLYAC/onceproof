@@ -27,7 +27,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "uvicorn>=0.51,<0.52",
+  "uvicorn>=0.51,<0.54",
 ]
 
 [project.optional-dependencies]
